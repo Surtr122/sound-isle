@@ -7,6 +7,8 @@
 
 ![声形欢迎页](docs/screenshots/welcome.png)
 
+> 截图里的素材是**合成的演示库**，只用于展示界面。图中的「音效 12 / 动作 12」不是你的素材数量，也不是扫描上限；实际数量以你添加的文件夹为准。
+
 ## 先看这里：怎么安装、怎么用
 
 声形不是 `.exe` 安装包，而是一个 Python 本地应用。**不需要 `pip install`，不需要 Node.js，也不需要数据库。**
@@ -72,7 +74,7 @@
 - 分类不是死的：可以手动改类、恢复自动判断，也可以自己新建抽屉；
 - 所有状态只存在本机，不写入素材文件夹。
 
-![全部素材：顶部是两个来源，音效 12 项与动作 12 项合并查看](docs/screenshots/library.png)
+![全部素材：合成演示库顶部是两个来源，音效 12 项与动作 12 项合并查看](docs/screenshots/library.png)
 
 ## 五个核心动作
 
@@ -315,7 +317,7 @@ sound-isle/
 │  └─ web/
 │     ├─ index.html
 │     └─ assets/{css,js}
-├─ tests/test_core.py         # 35 个标准库 unittest
+├─ tests/test_core.py         # 36 个标准库 unittest
 ├─ scripts/                   # 演示素材、截图、浏览器流程测试
 ├─ docs/screenshots/
 └─ .github/workflows/tests.yml
@@ -327,7 +329,7 @@ sound-isle/
 python -m unittest discover -s tests -v
 ```
 
-测试只使用临时目录，不会读取或改动真实素材；当前 35 项全部通过。
+测试只使用临时目录，不会读取或改动真实素材；当前 36 项全部通过。
 
 浏览器流程（本机 Playwright + Edge，服务需先启动）：
 
