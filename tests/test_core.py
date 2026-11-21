@@ -25,11 +25,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from soundisle.classify import (
     classify_animation_subcategory,
+    classify_asset,
     classify_sfx_subcategory,
     classify_track,
 )
 from soundisle.library import Library, LibraryError
 from soundisle.metadata import AudioMeta, guess_from_filename, read_audio
+from soundisle.probe import AssetProbe
 from soundisle.motion import load_bvh, load_fbx, load_gltf
 from soundisle.rename import (
     RenameError,
@@ -295,6 +297,23 @@ class MetadataAndClassifierTests(unittest.TestCase):
         self.assertEqual(classify_animation_subcategory("动作/run_forward.fbx")["key"], "run")
         self.assertEqual(classify_animation_subcategory("动作/受击.bvh")["key"], "hit")
         self.assertEqual(classify_animation_subcategory("动作/未知.bvh")["key"], "other")
+
+    def test_fbx_action_names_are_animation(self) -> None:
+        probe = AssetProbe(format="FBX", note="test")
+        names = (
+            "Dropping.fbx",
+            "Jog Forward.fbx",
+            "Left Turn.fbx",
+            "Looking Through Files Low.fbx",
+            "Reaching Out.fbx",
+            "Standing Torch Light Torch.fbx",
+            "Throw Object.fbx",
+            "Unarmed Grab Torch From Floor.fbx",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                result = classify_asset(f"动作库/{name}", probe)
+                self.assertEqual(result["key"], "animation")
 
 
 class LibraryTests(unittest.TestCase):
