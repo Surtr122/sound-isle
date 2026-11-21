@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#17362D">
+  <title>声形 · Sound &amp; Form</title>
+  <meta name="description" content="声形是一座本地声音与形体小岛：自动分类、标签、收藏与批量重命名，音频和 3D 资产都留在你的硬盘里。">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2317362D'/%3E%3Ccircle cx='32' cy='32' r='11' fill='%23C65D3B'/%3E%3Ccircle cx='32' cy='32' r='3' fill='%23F4EEDF'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body class="is-welcome">
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <button class="brand" type="button" data-view="library" aria-label="回到全部素材">
+        <span class="brand-disc" aria-hidden="true"><span class="brand-disc-label">形</span></span>
+        <span class="brand-type">
+          <span class="brand-cn">声形</span>
+          <span class="brand-en">SOUND &amp; FORM</span>
+        </span>
+      </button>
+
+      <p class="sidebar-note">一座只属于你的<br>声音与形体小岛。</p>
+
+      <nav class="nav" aria-label="主要导航">
+        <p class="nav-label">资料库</p>
+        <button class="nav-item is-active" type="button" data-view="library">
+          <span class="nav-icon" data-icon="layers"></span>
+          <span>全部素材</span>
+          <span class="nav-count" id="nav-count-all">—</span>
+        </button>
+        <button class="nav-item" type="button" data-view="categories">
+          <span class="nav-icon" data-icon="layers"></span>
+          <span>自动分类</span>
+          <span class="nav-count" id="nav-count-categories">—</span>
+        </button>
+
+        <p class="nav-label nav-label-spaced">收藏</p>
+        <button class="nav-item" type="button" data-view="favorites">
+          <span class="nav-icon" data-icon="heart"></span>
+          <span>收藏</span>
+          <span class="nav-count" id="nav-count-favorites">—</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+
+      <div class="sidebar-card">
+        <span class="sidebar-card-kicker">LOCAL FIRST</span>
+        <p>标签与收藏存在你的电脑里，音频与 3D 文件一个字节都不会被上传。</p>
+        <button class="sidebar-link" type="button" id="sidebar-open">
+          <span data-icon="folder"></span>
+          添加文件夹
+        </button>
+      </div>
+
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        <span>本地运行 · 零上传</span>
+        <span class="sidebar-version">v0.2.0</span>
+      </div>
+    </aside>
+
+    <div class="nav-scrim" id="nav-scrim" hidden></div>
+
+    <main class="main" id="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" type="button" id="btn-menu" aria-label="打开导航" aria-expanded="false">
+          <span data-icon="menu"></span>
+        </button>
+        <div class="topbar-meta">
+          <span class="eyebrow" id="page-eyebrow">LIBRARY / 01</span>
+          <h1 class="page-title" id="page-title">全部素材</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="search-box" for="search-input">
+            <span class="search-icon" data-icon="search"></span>
+            <input id="search-input" type="search" autocomplete="off" spellcheck="false" placeholder="搜索声音、模型、标签…">
+            <kbd>/</kbd>
+          </label>
+          <button class="icon-btn" type="button" id="btn-rescan" title="重新扫描文件夹" aria-label="重新扫描文件夹">
+            <span data-icon="refresh"></span>
+          </button>
+          <button class="btn btn-ghost topbar-open" type="button" id="btn-open">
+            <span data-icon="folder"></span>
+            <span>添加文件夹</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="view-root" id="view-root" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <div class="selection-bar" id="selection-bar" hidden>
+    <div class="selection-summary">
+      <span class="selection-count" id="selection-count">0</span>
+      <span>项已选</span>
+    </div>
+    <span class="selection-rule"></span>
+    <div class="selection-actions">
+      <button class="selection-btn" type="button" data-action="bulk-tag">
+        <span data-icon="tag"></span>加标签
+      </button>
+      <button class="selection-btn" type="button" data-action="bulk-category">
+        <span data-icon="layers"></span>移动分类
+      </button>
+      <button class="selection-btn" type="button" data-action="bulk-subcategory" id="selection-subcategory" hidden>
+        <span data-icon="wave"></span>音效细类
+      </button>
+      <button class="selection-btn" type="button" data-action="bulk-favorite">
+        <span data-icon="heart"></span>收藏
+      </button>
+      <button class="selection-btn selection-btn-primary" type="button" data-action="bulk-rename">
+        <span data-icon="edit"></span>批量重命名
+      </button>
+      <button class="selection-close" type="button" data-action="clear-selection" aria-label="取消选择">
+        <span data-icon="x"></span>
+      </button>
+    </div>
+  </div>
+
+  <section class="player" id="player" aria-label="音频播放器">
+    <div class="player-now">
+      <div class="player-cover" id="player-cover"></div>
+      <div class="player-meta">
+        <span class="player-kicker" id="player-kicker">NOW PLAYING</span>
+        <strong class="player-title" id="player-title">选一段声音，让岛上有回响</strong>
+        <span class="player-artist" id="player-artist">声形 · 本地播放器</span>
+      </div>
+    </div>
+
+    <div class="player-center">
+      <div class="player-controls">
+        <button class="player-btn player-btn-small" type="button" id="player-prev" aria-label="上一首" disabled>
+          <span data-icon="prev"></span>
+        </button>
+        <button class="player-btn player-btn-play" type="button" id="player-play" aria-label="播放" disabled>
+          <span data-icon="play" id="play-icon"></span>
+        </button>
+        <button class="player-btn player-btn-small" type="button" id="player-next" aria-label="下一首" disabled>
+          <span data-icon="next"></span>
+        </button>
+      </div>
+      <div class="player-progress">
+        <span class="time" id="player-current">0:00</span>
+        <canvas class="player-viz" id="player-visualizer" width="150" height="24" aria-hidden="true"></canvas>
+        <input class="seek" id="player-seek" type="range" min="0" max="100" value="0" step="0.1" aria-label="播放进度" disabled>
+        <span class="time" id="player-duration">0:00</span>
+      </div>
+    </div>
+
+    <div class="player-tools">
+      <div class="player-speed">
+        <select id="player-speed" aria-label="播放速度">
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+        </select>
+        <button class="player-ab" type="button" id="player-loop-a" aria-label="设置 A 点" title="设置 A 点" disabled>A</button>
+        <button class="player-ab" type="button" id="player-loop-b" aria-label="设置 B 点" title="设置 B 点" disabled>B</button>
+        <button class="player-ab player-ab-clear" type="button" id="player-loop-clear" aria-label="清除 AB 循环" title="清除 AB 循环" disabled>×</button>
+      </div>
+      <button class="player-fav player-loop-mode is-loop-one" type="button" id="player-loop-mode" aria-label="单曲循环" title="单曲循环：开" aria-pressed="true" disabled>
+        <span data-icon="repeat-one"></span>
+      </button>
+      <button class="player-fav" type="button" id="player-wave-open" data-action="open-waveform" aria-label="查看波形" title="查看波形" disabled>
+        <span data-icon="wave"></span>
+      </button>
+      <button class="player-fav" type="button" id="player-fav" aria-label="收藏当前声音" disabled>
+        <span data-icon="heart"></span>
+      </button>
+      <div class="volume">
+        <span data-icon="volume"></span>
+        <input id="player-volume" type="range" min="0" max="1" value="0.8" step="0.01" aria-label="音量">
+      </div>
+    </div>
+    <audio id="audio" preload="metadata"></audio>
+  </section>
+
+  <div id="welcome-root"></div>
+  <div id="modal-root"></div>
+  <div class="toast-stack" id="toast-root" role="status" aria-live="polite"></div>
+
+  <script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>
