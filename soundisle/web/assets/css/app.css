@@ -2580,6 +2580,13 @@ a {
   opacity: 0.3;
 }
 
+.modal-foot-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
 .player-fav {
   width: 30px;
   height: 30px;

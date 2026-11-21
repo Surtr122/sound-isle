@@ -40,7 +40,7 @@ function number(value, digits = 2) {
   return Number(value).toFixed(digits).replace(/\.?0+$/, "");
 }
 
-export function mountSkinPreview(container, track) {
+export function mountSkinPreview(container, track, options = {}) {
   const canvasHost = container.querySelector("[data-skin-canvas]");
   const animationSelect = container.querySelector("[data-skin-animation]");
   const wireToggle = container.querySelector("[data-skin-wire]");
@@ -95,6 +95,8 @@ export function mountSkinPreview(container, track) {
   let elapsed = 0;
   let wireframe = false;
   let joints = 0;
+  let meshCount = 0;
+  let skinnedCount = 0;
   let materials = [];
   let dimensions = null;
 
@@ -136,9 +138,10 @@ export function mountSkinPreview(container, track) {
 
   function updateMeta() {
     if (metaNode) {
+      const format = track.format || "3D";
       metaNode.textContent = dimensions
-        ? `${track.format || "3D"} · ${joints} 骨骼 · ${clips.length} 动画 · ${number(dimensions.x)} × ${number(dimensions.y)} × ${number(dimensions.z)}`
-        : "";
+        ? `${format} · ${joints} 骨骼 · ${clips.length} 动画 · ${number(dimensions.x)} × ${number(dimensions.y)} × ${number(dimensions.z)}`
+        : `${format} · ${joints} 骨骼 · ${clips.length} 动画 · ${meshCount ? "无可见网格" : "没有模型网格"}`;
     }
     if (materialsNode) {
       const names = materials.slice(0, 6).map((m) => m.name).filter(Boolean);
@@ -226,6 +229,7 @@ export function mountSkinPreview(container, track) {
         scene.add(model);
         model.traverse((child) => {
           if (child.isMesh) {
+            meshCount += 1;
             child.castShadow = false;
             child.receiveShadow = false;
             const list = Array.isArray(child.material) ? child.material : [child.material];
@@ -237,14 +241,19 @@ export function mountSkinPreview(container, track) {
             }
           }
           if (child.isSkinnedMesh && child.skeleton?.bones) {
+            skinnedCount += 1;
             joints = Math.max(joints, child.skeleton.bones.length);
           }
         });
         clips = Array.isArray(result.animations) ? result.animations : [];
-        if (clips.length) {
+        if (!meshCount) {
+          setStatus(container, "这个文件只有骨骼/动作数据，没有可显示的模型网格；请改用「骨骼预览」。", true);
+        } else if (clips.length) {
           mixer = new THREE.AnimationMixer(model);
           playClip(0);
           setStatus(container, `已加载 · ${clips.length} 个动画，可拖拽旋转，滚轮缩放。`);
+        } else if (!skinnedCount) {
+          setStatus(container, "模型已加载，但没有蒙皮骨骼；可查看静态网格。");
         } else {
           setStatus(container, "模型已加载 · 没有动画片段，仅显示静态姿态。");
         }
@@ -252,6 +261,9 @@ export function mountSkinPreview(container, track) {
         fitCamera();
         updateMeta();
         animate();
+        if (!meshCount && typeof options.onNoMesh === "function") {
+          options.onNoMesh();
+        }
       };
       const onError = (error) => {
         setStatus(container, `模型解析失败：${error?.message || error}`, true);

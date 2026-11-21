@@ -2035,7 +2035,7 @@ function openModal({
   return { layer, modal: layer.querySelector(".modal") };
 }
 
-function closeModal() {
+function closeModal(silent = false) {
   const root = $("#modal-root");
   if (!root) return;
   const layer = root.querySelector(".modal-layer");
@@ -2051,7 +2051,7 @@ function closeModal() {
     }
   }
   lastModalFocus = null;
-  if (callback) callback();
+  if (callback && !silent) callback();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2083,6 +2083,7 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
   const track = findTrack(id);
   if (!track || state.busy) return;
   let dispose = null;
+  let autoSwitched = false;
   const modal = openModal({
     kicker: "SKINNED PREVIEW",
     title: track.title || track.filename || "蒙皮预览",
@@ -2111,11 +2112,30 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
         </div>
       </aside>
     </div>`,
-    foot: `<button class="btn btn-ghost" type="button" data-preview-back>${icon("arrow-left", 13)}${onReturn ? "返回分类" : "返回详情"}</button>`,
+    foot: `<div class="modal-foot-actions">
+      ${isMotionPreviewable(track) ? `<button class="btn btn-quiet" type="button" data-skin-to-motion>${icon("bone", 13)}改为骨骼预览</button>` : ""}
+      <button class="btn btn-ghost" type="button" data-preview-back>${icon("arrow-left", 13)}${onReturn ? "返回分类" : "返回详情"}</button>
+    </div>`,
     onMount: (layer) => {
       const container = layer.querySelector(".skin-preview");
       try {
-        dispose = mountSkinPreview(container, track);
+        dispose = mountSkinPreview(container, track, {
+          onNoMesh: () => {
+            if (autoSwitched || !modal.layer.isConnected) return;
+            autoSwitched = true;
+            toast("这个文件只有骨骼/动作数据，已切换到骨骼预览。");
+            if (dispose) {
+              try {
+                dispose();
+              } catch {
+                // already disposed
+              }
+              dispose = null;
+            }
+            closeModal(true);
+            openMotionPreview(id, { onReturn, returnToDetail: !onReturn });
+          },
+        });
       } catch (error) {
         layer.querySelectorAll("[data-skin-status]").forEach((node) => {
           node.textContent = error.message;
@@ -2140,6 +2160,18 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
   });
   modal.layer.classList.add("skin-layer");
   modal.layer.querySelector("[data-preview-back]")?.addEventListener("click", () => closeModal());
+  modal.layer.querySelector("[data-skin-to-motion]")?.addEventListener("click", () => {
+    if (dispose) {
+      try {
+        dispose();
+      } catch {
+        // already disposed
+      }
+      dispose = null;
+    }
+    closeModal(true);
+    openMotionPreview(id, { onReturn, returnToDetail: !onReturn });
+  });
 }
 
 function drawerRowMarkup(track, selected = false, categoryKey = "") {
