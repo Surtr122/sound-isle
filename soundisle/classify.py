@@ -464,7 +464,10 @@ SCENE_RE = re.compile(
     re.IGNORECASE,
 )
 ANIMATION_RE = re.compile(
-    r"(动作|动画|骨骼|绑定|姿态|动作库|animation|animations|anim|motion|motions|rig|pose|walk|run|idle|jump|attack|dance|fight)",
+    r"(动作|动画|骨骼|绑定|姿态|动作库|animation|animations|anim|motion|motions|rig|pose|"
+    r"walk|run|jog|idle|jump|attack|dance|fight|stand|turn|drop|reach|throw|grab|look|"
+    r"crouch|climb|fall|push|pull|kick|punch|wave|salute|pick|picking|fruit|react|reaction|"
+    r"thrust|slash|equip|shoulder|underarm|melee|combo|dodge|stab)",
     re.IGNORECASE,
 )
 
@@ -507,12 +510,6 @@ def classify_asset(rel_path: str, probe) -> Dict[str, object]:
             return _asset_result("animation", f"动作文件 · {bones} 根骨骼", 0.98, subcategory)
         return _asset_result("animation", "BVH / 动画缓存格式，直接归入骨骼动作", 0.96, subcategory)
 
-    if CHARACTER_RE.search(path):
-        return _asset_result("character", "路径或文件名指向角色资产", 0.9)
-    if PROP_RE.search(path):
-        return _asset_result("prop", "路径或文件名指向道具资产", 0.88)
-    if SCENE_RE.search(path):
-        return _asset_result("scene", "路径或文件名指向场景资产", 0.88)
     if ANIMATION_RE.search(path):
         return _asset_result(
             "animation",
@@ -520,6 +517,12 @@ def classify_asset(rel_path: str, probe) -> Dict[str, object]:
             0.86,
             classify_animation_subcategory(rel_path, probe),
         )
+    if CHARACTER_RE.search(path):
+        return _asset_result("character", "路径或文件名指向角色资产", 0.9)
+    if PROP_RE.search(path):
+        return _asset_result("prop", "路径或文件名指向道具资产", 0.88)
+    if SCENE_RE.search(path):
+        return _asset_result("scene", "路径或文件名指向场景资产", 0.88)
 
     if suffix in MODEL_EXTS:
         animations = int(getattr(probe, "stats", {}).get("animations") or 0)
