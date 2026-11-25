@@ -63,6 +63,9 @@ let searchDebounce = null;
 let lastModalFocus = null;
 let lastSelectedId = null;
 let modalOnClose = null;
+let inlineOnClose = null;
+const modalStack = [];
+let inlinePreviewHost = null;
 
 /* -------------------------------------------------------------------------- */
 /* Boot                                                                       */
@@ -1285,7 +1288,7 @@ async function welcomePick() {
 function enterLibrary(payload, { announce = true } = {}) {
   if (!payload?.library) throw new Error("没有读到这个文件夹里的素材资料。");
   if (player) player.stop();
-  closeModal();
+  closeAllModals();
 
   state.payload = payload;
   state.library = payload.library;
@@ -1349,6 +1352,7 @@ function setView(view) {
   const search = $("#search-input");
   if (search) search.value = "";
   closeSidebar();
+  closeAllModals();
   render();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2005,19 +2009,40 @@ function openModal({
   onMount = null,
   onClose = null,
 } = {}) {
-  closeModal();
-  lastModalFocus = document.activeElement;
+  const inlineHost = inlinePreviewHost;
+  inlinePreviewHost = null;
+  if (!inlineHost) {
+    const current = $("#modal-root .modal-layer:not(.is-behind)");
+    if (current) {
+      current.classList.add("is-behind");
+      modalStack.push({ layer: current, onClose: modalOnClose });
+      modalOnClose = null;
+    } else {
+      lastModalFocus = document.activeElement;
+    }
+  }
 
   const layer = document.createElement("div");
-  layer.className = "modal-layer";
+  layer.className = `modal-layer ${inlineHost ? "inline-preview-layer" : ""}`;
+  const inlineBar = inlineHost
+    ? `<div class="inline-preview-bar">
+        ${kicker ? `<span class="modal-kicker">${escapeHtml(kicker)}</span>` : ""}
+        <h3>${escapeHtml(title)}</h3>
+        ${sub ? `<p>${escapeHtml(sub)}</p>` : ""}
+      </div>`
+    : "";
   layer.innerHTML = `<div class="modal ${wide ? "is-wide" : ""} ${narrow ? "is-narrow" : ""}" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-head">
+    ${
+      inlineHost
+        ? ""
+        : `<div class="modal-head">
       ${kicker ? `<span class="modal-kicker">${escapeHtml(kicker)}</span>` : ""}
       <h2 class="modal-title" id="modal-title">${escapeHtml(title)}</h2>
       ${sub ? `<p class="modal-sub">${escapeHtml(sub)}</p>` : ""}
       <button class="modal-close" type="button" data-close aria-label="关闭">${icon("x", 15)}</button>
-    </div>
-    <div class="modal-body">${body}</div>
+    </div>`
+    }
+    <div class="modal-body">${inlineBar}${body}</div>
     ${foot ? `<div class="modal-foot">${foot}</div>` : ""}
   </div>`;
 
@@ -2028,9 +2053,16 @@ function openModal({
     }
   });
 
-  $("#modal-root")?.appendChild(layer);
+  if (inlineHost?.isConnected) {
+    const head = inlineHost.querySelector(".modal-head");
+    layer.style.setProperty("--inline-preview-top", `${head?.offsetHeight || 72}px`);
+    inlineHost.querySelector(".modal")?.appendChild(layer);
+    inlineOnClose = onClose;
+  } else {
+    $("#modal-root")?.appendChild(layer);
+    modalOnClose = onClose;
+  }
   document.body.classList.add("modal-open");
-  modalOnClose = onClose;
   if (onMount) onMount(layer);
   return { layer, modal: layer.querySelector(".modal") };
 }
@@ -2038,20 +2070,69 @@ function openModal({
 function closeModal(silent = false) {
   const root = $("#modal-root");
   if (!root) return;
-  const layer = root.querySelector(".modal-layer");
+
+  const inlineLayer = root.querySelector(".inline-preview-layer");
+  if (inlineLayer) {
+    const inlineCallback = inlineOnClose;
+    inlineOnClose = null;
+    inlineLayer.remove();
+    document.body.classList.add("modal-open");
+    if (inlineCallback && !silent) inlineCallback();
+    return;
+  }
+
+  const layer = root.querySelector(".modal-layer:not(.is-behind)");
   const callback = modalOnClose;
   modalOnClose = null;
   if (layer) layer.remove();
-  document.body.classList.remove("modal-open");
-  if (lastModalFocus?.isConnected) {
-    try {
-      lastModalFocus.focus({ preventScroll: true });
-    } catch {
-      // focus restoration is best effort
+
+  const previous = modalStack.pop();
+  if (previous?.layer?.isConnected) {
+    previous.layer.classList.remove("is-behind");
+    modalOnClose = previous.onClose || null;
+    document.body.classList.add("modal-open");
+  } else {
+    document.body.classList.remove("modal-open");
+    if (lastModalFocus?.isConnected) {
+      try {
+        lastModalFocus.focus({ preventScroll: true });
+      } catch {
+        // focus restoration is best effort
+      }
     }
+    lastModalFocus = null;
   }
-  lastModalFocus = null;
+
   if (callback && !silent) callback();
+}
+
+function closeAllModals(silent = true) {
+  const root = $("#modal-root");
+  if (!root) return;
+  while (root.querySelector(".modal-layer")) closeModal(silent);
+  modalStack.length = 0;
+  modalOnClose = null;
+  inlineOnClose = null;
+  inlinePreviewHost = null;
+  document.body.classList.remove("modal-open");
+}
+
+function refreshTopModal() {
+  const layer = document.querySelector("#modal-root > .modal-layer:not(.is-behind)");
+  if (!layer || layer.classList.contains("inline-preview-layer")) return;
+  if (layer.classList.contains("drawer-layer")) {
+    const category = layer.dataset.category;
+    const sub = layer.dataset.sub || "";
+    if (!category) return;
+    closeModal(true);
+    openCategoryDrawer(category, sub);
+    return;
+  }
+  const assetId = layer.dataset.assetId;
+  if (assetId) {
+    closeModal(true);
+    openInspect(assetId);
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2079,11 +2160,14 @@ function isSkinPreviewable(track) {
   return suffix === ".glb" || suffix === ".gltf" || suffix === ".fbx";
 }
 
-async function openSkinPreview(id, { onReturn = null } = {}) {
+async function openSkinPreview(id, { onReturn = null, inlineHost = null } = {}) {
   const track = findTrack(id);
   if (!track || state.busy) return;
   let dispose = null;
   let autoSwitched = false;
+  const host = inlineHost;
+  const backLabel = onReturn || host?.classList.contains("drawer-layer") ? "返回分类" : "返回详情";
+  inlinePreviewHost = host;
   const modal = openModal({
     kicker: "SKINNED PREVIEW",
     title: track.title || track.filename || "蒙皮预览",
@@ -2114,7 +2198,7 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
     </div>`,
     foot: `<div class="modal-foot-actions">
       ${isMotionPreviewable(track) ? `<button class="btn btn-quiet" type="button" data-skin-to-motion>${icon("bone", 13)}改为骨骼预览</button>` : ""}
-      <button class="btn btn-ghost" type="button" data-preview-back>${icon("arrow-left", 13)}${onReturn ? "返回分类" : "返回详情"}</button>
+      <button class="btn btn-ghost" type="button" data-preview-back>${icon("arrow-left", 13)}${backLabel}</button>
     </div>`,
     onMount: (layer) => {
       const container = layer.querySelector(".skin-preview");
@@ -2133,7 +2217,7 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
               dispose = null;
             }
             closeModal(true);
-            openMotionPreview(id, { onReturn, returnToDetail: !onReturn });
+            openMotionPreview(id, { onReturn, returnToDetail: !onReturn, inlineHost: host });
           },
         });
       } catch (error) {
@@ -2152,7 +2236,7 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
         }
         dispose = null;
       }
-      if (modal?.layer?.isConnected === false) {
+      if (!host && modal?.layer?.isConnected === false) {
         if (onReturn) onReturn();
         else openInspect(id);
       }
@@ -2170,7 +2254,7 @@ async function openSkinPreview(id, { onReturn = null } = {}) {
       dispose = null;
     }
     closeModal(true);
-    openMotionPreview(id, { onReturn, returnToDetail: !onReturn });
+    openMotionPreview(id, { onReturn, returnToDetail: !onReturn, inlineHost: host });
   });
 }
 
@@ -2345,21 +2429,18 @@ function openCategoryDrawer(categoryKey, subKey = "") {
       if (!ids.length) return;
       const action = bulk.dataset.drawerBulk;
       if (action === "tag") {
-        closeModal();
         openTagEditor(ids);
       } else if (action === "category") {
-        closeModal();
         openCategoryPicker(ids);
       } else if (action === "rename") {
-        closeModal();
         openRenameModal(ids);
       } else if (action === "favorite") {
-        closeModal();
         state.busy = true;
         try {
           const result = await api.setFavorite(ids, true);
           if (result.library) {
             applyLibraryResponse(result.library, { clearSelection: true });
+            repaint();
             toast(`已收藏 ${ids.length} 项`);
           }
         } catch (error) {
@@ -2396,16 +2477,14 @@ function openCategoryDrawer(categoryKey, subKey = "") {
     const motionButton = target.closest("[data-drawer-motion]");
     if (motionButton) {
       const id = motionButton.dataset.drawerMotion;
-      closeModal();
-      openMotionPreview(id, { onReturn: () => openCategoryDrawer(categoryKey, activeSub) });
+      openMotionPreview(id, { inlineHost: layer });
       return;
     }
 
     const skinButton = target.closest("[data-drawer-skin]");
     if (skinButton) {
       const id = skinButton.dataset.drawerSkin;
-      closeModal();
-      openSkinPreview(id, { onReturn: () => openCategoryDrawer(categoryKey, activeSub) });
+      openSkinPreview(id, { inlineHost: layer });
       return;
     }
 
@@ -2451,7 +2530,7 @@ function openCategoryDrawer(categoryKey, subKey = "") {
             const undoResult = await api.setMemberships([remove.dataset.drawerRemove], beforeKeys);
             if (undoResult.library) applyLibraryResponse(undoResult.library, { keepScroll: true });
           });
-          closeModal();
+          repaint();
         }
       } catch (error) {
         toast(error.message, { type: "error" });
@@ -2461,13 +2540,11 @@ function openCategoryDrawer(categoryKey, subKey = "") {
 
     const move = target.closest("[data-drawer-category]");
     if (move) {
-      closeModal();
       openCategoryPicker([move.dataset.drawerCategory]);
       return;
     }
 
     if (target.closest("[data-drawer-create-child]")) {
-      closeModal();
       openCreateCategoryModal(categoryKey);
       return;
     }
@@ -2592,6 +2669,7 @@ function openCategoryPicker(idsOverride = null, { subcategory = false } = {}) {
         }
         applyLibraryResponse(result.library, { clearSelection: !idsOverride });
         closeModal();
+        refreshTopModal();
         rememberUndo("分类已更新。", async () => {
           let lastResult = null;
           for (const item of before) lastResult = await api.setMemberships([item.id], item.keys);
@@ -2629,6 +2707,7 @@ function openCategoryPicker(idsOverride = null, { subcategory = false } = {}) {
         const result = await api.setCategory(ids, "auto");
         applyLibraryResponse(result.library, { clearSelection: !idsOverride });
         closeModal();
+        refreshTopModal();
         toast("已恢复自动分类。");
       } catch (error) {
         toast(error.message, { type: "error" });
@@ -2653,6 +2732,7 @@ function openCategoryPicker(idsOverride = null, { subcategory = false } = {}) {
       const result = await api.setSubcategory(ids, key);
       applyLibraryResponse(result.library, { clearSelection: !idsOverride });
       closeModal();
+      refreshTopModal();
       toast("音效细类已更新。");
     } catch (error) {
       toast(error.message, { type: "error" });
@@ -2789,14 +2869,17 @@ function drawMotionFrame(ctx, canvas, motion, index, accent) {
   ctx.fillText(`FRAME ${String(index + 1).padStart(3, "0")} / ${String(frames.length).padStart(3, "0")}`, 18, height - 18);
 }
 
-async function openMotionPreview(id, { returnToDetail = false, onReturn = null } = {}) {
+async function openMotionPreview(id, { returnToDetail = false, onReturn = null, inlineHost = null } = {}) {
   if (!id || state.busy) return;
+  const host = inlineHost;
+  const backLabel = onReturn || host?.classList.contains("drawer-layer") ? "返回分类" : "返回详情";
   setBusy(true);
   try {
     const result = await api.motion(id);
     const motion = result.motion;
     if (!motion?.frames?.length) throw new Error("这个动作没有可预览的帧。");
     const accent = findTrack(id)?.category?.accent || "#C85A3A";
+    inlinePreviewHost = host;
     const modal = openModal({
       kicker: "MOTION PREVIEW",
       title: result.track?.title || "动作预览",
@@ -2809,10 +2892,11 @@ async function openMotionPreview(id, { returnToDetail = false, onReturn = null }
         </div>
         <p class="motion-note">${icon("info", 12)} 这是从动作骨骼数据实时画出的结构预览，不是最终渲染。原始文件不会被修改。</p>`,
       wide: true,
-      foot: returnToDetail || onReturn
-        ? `<button class="btn btn-ghost" type="button" data-motion-back>${icon("arrow-left", 13)}${onReturn ? "返回分类" : "返回详情"}</button>`
+      foot: inlineHost || returnToDetail || onReturn
+        ? `<button class="btn btn-ghost" type="button" data-motion-back>${icon("arrow-left", 13)}${backLabel}</button>`
         : "",
       onClose: () => {
+        if (inlineHost) return;
         if (onReturn) onReturn();
         else if (returnToDetail) openInspect(id);
       },
@@ -3159,6 +3243,7 @@ function openTagEditor(idsOverride = null) {
             if (!result.library) return;
             closeModal();
             applyLibraryResponse(result.library, { clearSelection: true });
+            refreshTopModal();
             toast(`已移除标签「${tag}」`);
           } catch (error) {
             button.disabled = false;
@@ -3185,6 +3270,7 @@ function openTagEditor(idsOverride = null) {
           if (!result.library) return;
           closeModal();
           applyLibraryResponse(result.library, { clearSelection: true });
+          refreshTopModal();
           rememberUndo(`已为 ${tracks.length} 项素材添加 ${tags.length} 个标签`, async () => {
             let lastResult = null;
             for (const item of beforeTags) lastResult = await api.setTags(item.id, item.tags);
@@ -3504,6 +3590,7 @@ function handleRenameSuccess(result) {
 
   render({ keepScroll: true });
   if (nextTrack) player.setQueue(audioTracks());
+  refreshTopModal();
   toast(`已重命名 ${result.plan?.renamed ?? mapping.length} 个文件`);
 }
 
@@ -3722,6 +3809,8 @@ async function openInspect(id) {
       body: detailMarkup(asset),
       wide: true,
       onMount: (layer) => {
+        layer.classList.add("inspect-layer");
+        layer.dataset.assetId = asset.id;
         layer.querySelector('[data-inspect-action="copy"]')?.addEventListener("click", async () => {
           const copied = await copyText(asset.absolute_path || "");
           toast(copied ? "路径已复制" : "复制失败，请手动选择路径", { type: copied ? "success" : "error" });
@@ -3734,22 +3823,19 @@ async function openInspect(id) {
           }
         });
         layer.querySelector('[data-inspect-action="tags"]')?.addEventListener("click", () => {
-          closeModal();
           openTagEditor([asset.id]);
         });
         layer.querySelector('[data-inspect-action="category"]')?.addEventListener("click", () => {
-          closeModal();
           openCategoryPicker([asset.id]);
         });
         layer.querySelector('[data-inspect-action="subcategory"]')?.addEventListener("click", () => {
-          closeModal();
           openCategoryPicker([asset.id], { subcategory: true });
         });
         layer.querySelector('[data-inspect-action="skin"]')?.addEventListener("click", () => {
-          openSkinPreview(asset.id);
+          openSkinPreview(asset.id, { inlineHost: layer });
         });
         layer.querySelector('[data-inspect-action="motion"]')?.addEventListener("click", () => {
-          openMotionPreview(asset.id, { returnToDetail: true });
+          openMotionPreview(asset.id, { returnToDetail: true, inlineHost: layer });
         });
       },
     });
